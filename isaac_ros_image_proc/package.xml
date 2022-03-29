@@ -24,16 +24,19 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
   <author>Tobi Alade</author>
 
   <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>ament_cuda</buildtool_depend>
 
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>image_transport</depend>
   <depend>cv_bridge</depend>
   <depend>isaac_ros_common</depend>
+  <depend>tracetools_image_pipeline</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>isaac_ros_test</test_depend>
+  <test_depend>launch_testing_ament_cmake</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

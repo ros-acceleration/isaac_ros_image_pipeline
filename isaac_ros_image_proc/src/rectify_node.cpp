@@ -58,6 +58,7 @@
 #include "vpi/VPI.h"
 
 #include "isaac_ros_common/vpi_utilities.hpp"
+#include "tracetools_image_pipeline/tracetools.h"
 
 namespace
 {
@@ -114,8 +115,19 @@ void RectifyNode::RectifyCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
+  TRACEPOINT(
+    image_proc_rectify_cb_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
+
   // If there are no consumers for the rectified image, then don't spend compute resources
   if (pub_.getNumSubscribers() < 1) {
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -124,6 +136,11 @@ void RectifyNode::RectifyCallback(
     RCLCPP_ERROR(
       get_logger(), "Rectified topic '%s' requested but camera publishing '%s' "
       "is uncalibrated", pub_.getTopic().c_str(), sub_.getInfoTopic().c_str());
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -132,6 +149,11 @@ void RectifyNode::RectifyCallback(
     RCLCPP_ERROR(
       get_logger(), "Requested image format %s has no known VPI correspondence",
       image_msg->encoding);
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -139,8 +161,19 @@ void RectifyNode::RectifyCallback(
   // Simply republish the image
   if (std::all_of(info_msg->d.begin(), info_msg->d.end(), [](auto el) {return el == 0.0;})) {
     pub_.publish(image_msg);
+    TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
+
+  TRACEPOINT(
+    image_proc_rectify_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
   // Collect pixel binning parameters from camera info
   uint32_t binning_x = info_msg->binning_x || 1;
@@ -198,12 +231,23 @@ void RectifyNode::RectifyCallback(
 
   // Use VPI to rectify image
   RectifyImage(image_ptr, K_mat, P_mat, R_mat, D_mat, info_msg->distortion_model, roi);
+  TRACEPOINT(
+    image_proc_rectify_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
   // Allocate and publish new rectified image message
   pub_.publish(
     cv_bridge::CvImage(
       image_msg->header, image_msg->encoding,
       image_ptr->image).toImageMsg());
+  
+  TRACEPOINT(
+      image_proc_rectify_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
 }
 
 void RectifyNode::RectifyImage(

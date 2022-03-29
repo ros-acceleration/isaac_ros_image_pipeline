@@ -54,6 +54,7 @@
 #include "vpi/VPI.h"
 
 #include "isaac_ros_common/vpi_utilities.hpp"
+#include "tracetools_image_pipeline/tracetools.h"
 
 namespace isaac_ros
 {
@@ -63,7 +64,7 @@ namespace image_proc
 ResizeNode::ResizeNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("ResizeNode", options),
   sub_{image_transport::create_camera_subscription(
-      this, "image", std::bind(
+      this, "image_rect", std::bind(
         &ResizeNode::ResizeCallback,
         this, std::placeholders::_1, std::placeholders::_2), "raw")},
   pub_{image_transport::create_camera_publisher(this, "resized/image")},
@@ -78,11 +79,22 @@ void ResizeNode::ResizeCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr & image_msg,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & info_msg)
 {
+  TRACEPOINT(
+    image_proc_resize_cb_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
+
   cv_bridge::CvImagePtr image_ptr;
   try {
     image_ptr = cv_bridge::toCvCopy(image_msg);
   } catch (cv_bridge::Exception & e) {
     RCLCPP_ERROR(get_logger(), "cv_bridge exception: %s", e.what());
+    TRACEPOINT(
+      image_proc_resize_cb_fini,
+      static_cast<const void *>(this),
+      static_cast<const void *>(&(*image_msg)),
+      static_cast<const void *>(&(*info_msg)));
     return;
   }
 
@@ -91,16 +103,6 @@ void ResizeNode::ResizeCallback(
   output_image.header = image_ptr->header;
   output_image.encoding = image_ptr->encoding;
 
-  VPIImage input{};
-  CHECK_STATUS(vpiImageCreateOpenCVMatWrapper(image_ptr->image, 0, &input));
-
-  VPIImageFormat type{VPI_IMAGE_FORMAT_U8};
-  CHECK_STATUS(vpiImageGetFormat(input, &type));
-
-  // Initialize VPI stream for all VPI operations
-  VPIStream stream{};
-  CHECK_STATUS(vpiStreamCreate(vpi_backends_, &stream));
-
   // Prepare CameraInfo output with desired size
   // The original dimensions will either be scaled or replaced entirely
   double scale_y, scale_x;
@@ -108,6 +110,11 @@ void ResizeNode::ResizeCallback(
   if (use_relative_scale_) {
     if (scale_height_ <= 0 || scale_width_ <= 0) {
       RCLCPP_ERROR(get_logger(), "scale_height and scale_width must be greater than 0");
+      TRACEPOINT(
+        image_proc_resize_cb_fini,
+        static_cast<const void *>(this),
+        static_cast<const void *>(&(*image_msg)),
+        static_cast<const void *>(&(*info_msg)));
       return;
     }
 
@@ -118,6 +125,11 @@ void ResizeNode::ResizeCallback(
   } else {
     if (height_ <= 0 || width_ <= 0) {
       RCLCPP_ERROR(get_logger(), "height and width must be greater than 0");
+      TRACEPOINT(
+        image_proc_resize_cb_fini,
+        static_cast<const void *>(this),
+        static_cast<const void *>(&(*image_msg)),
+        static_cast<const void *>(&(*info_msg)));
       return;
     }
 
@@ -138,6 +150,22 @@ void ResizeNode::ResizeCallback(
   output_info_msg.p[3] = output_info_msg.p[3] * scale_x;  // T
   output_info_msg.p[5] = output_info_msg.p[5] * scale_y;  // fy
   output_info_msg.p[6] = output_info_msg.p[6] * scale_y;  // cy
+
+  TRACEPOINT(
+    image_proc_resize_init,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
+
+  VPIImage input{};
+  CHECK_STATUS(vpiImageCreateOpenCVMatWrapper(image_ptr->image, 0, &input));
+
+  VPIImageFormat type{VPI_IMAGE_FORMAT_U8};
+  CHECK_STATUS(vpiImageGetFormat(input, &type));
+
+  // Initialize VPI stream for all VPI operations
+  VPIStream stream{};
+  CHECK_STATUS(vpiStreamCreate(vpi_backends_, &stream));
 
   // Prepare intermediate image with input dimensions
   VPIImage tmp_in{};
@@ -179,6 +207,11 @@ void ResizeNode::ResizeCallback(
     cv::Mat{outData.planes[0].height, outData.planes[0].width, CV_8UC3, outData.planes[0].data,
     static_cast<size_t>(outData.planes[0].pitchBytes)};
   CHECK_STATUS(vpiImageUnlock(output));
+  TRACEPOINT(
+    image_proc_resize_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 
   pub_.publish(*output_image.toImageMsg(), output_info_msg);
 
@@ -187,6 +220,11 @@ void ResizeNode::ResizeCallback(
   vpiImageDestroy(output);
   vpiImageDestroy(tmp_in);
   vpiImageDestroy(tmp_out);
+  TRACEPOINT(
+    image_proc_resize_cb_fini,
+    static_cast<const void *>(this),
+    static_cast<const void *>(&(*image_msg)),
+    static_cast<const void *>(&(*info_msg)));
 }
 
 }  // namespace image_proc
